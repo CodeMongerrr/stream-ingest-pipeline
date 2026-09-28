@@ -19,9 +19,13 @@ export class InfluxWriter {
 
   constructor() {
     const client = new InfluxDB({ url: INFLUX_URL, token: INFLUX_TOKEN });
+    // The consumer calls flush() after each stream batch and XACKs only when it resolves,
+    // so the client neither flushes on a timer nor keeps its own retry buffer. The Redis
+    // pending list is the single retry queue.
     this.writeApi = client.getWriteApi(INFLUX_ORG, INFLUX_BUCKET, "ms", {
-      flushInterval: 1000,
+      flushInterval: 0,
       batchSize: 100,
+      maxRetries: 0,
     });
     console.log(`[influx] connected → ${INFLUX_URL} | org: ${INFLUX_ORG} | bucket: ${INFLUX_BUCKET}`);
   }
@@ -36,6 +40,11 @@ export class InfluxWriter {
       .timestamp(Date.parse(point.recorded_at));
 
     this.writeApi.writePoint(p);
+  }
+
+  /** Sends every buffered point now. Resolves once InfluxDB accepted them, rejects if the write failed. */
+  async flush(): Promise<void> {
+    await this.writeApi.flush();
   }
 
   async close(): Promise<void> {
