@@ -15,6 +15,9 @@ spec:
       containers:
         - name: fetcher
           image: pipeline-fetcher:latest
+          # Built locally and side-loaded (kind load / minikube image load), not pulled.
+          # Without this, the :latest tag defaults to Always and the pod sits in ImagePullBackOff.
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           envFrom:
