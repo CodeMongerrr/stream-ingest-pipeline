@@ -295,8 +295,10 @@ function getAllLocations(): Location[] {
   for (const city of NAMED_CITIES) add(city);
   for (const grid of buildGrid()) add(grid);
 
-  // Cap at 500 — stays comfortably within Open-Meteo's free tier limits:
-  // 500 req/cycle × 1 cycle/hr = 500 req/hr, 12,000/day (demo use only)
+  // Cap at 500. At the shared 8 req/s limit one pass over 500 locations takes about
+  // 63 s, a little longer than the 60 s cycle, so the last few are usually replaced by
+  // the next cycle before they are fetched. All 1,214 need about 152 s per pass, so
+  // raising the cap only makes sense together with a longer cron interval.
   return result.slice(0, 500);
 }
 
