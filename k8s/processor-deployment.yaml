@@ -15,6 +15,9 @@ spec:
       containers:
         - name: processor
           image: pipeline-processor:latest
+          # Built locally and side-loaded (kind load / minikube image load), not pulled.
+          # Without this, the :latest tag defaults to Always and the pod sits in ImagePullBackOff.
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: weather-config
