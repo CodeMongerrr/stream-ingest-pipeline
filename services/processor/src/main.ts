@@ -10,7 +10,7 @@ async function main() {
   redis.on("connect", () => console.log("[redis] connected"));
   redis.on("error",   (err) => console.error("[redis] error:", err));
 
-  // InfluxDB writer — buffers points and flushes every 1s in batches of 100
+  // InfluxDB writer. The consumer flushes it after every stream batch and only then XACKs.
   const writer = new InfluxWriter();
 
   // Graceful shutdown — flush any buffered points before exiting
@@ -23,16 +23,18 @@ async function main() {
   process.on("SIGINT",  shutdown);
   process.on("SIGTERM", shutdown);
 
-  // Read from Redis stream → write to InfluxDB → XACK
-  await startConsumer(redis, async (record: WeatherRecord) => {
-    writer.write(record);
-
-    console.log(
-      `[processor] ✓ ${record.city_name.padEnd(22)}` +
-      ` ${String(record.temperature).padEnd(6)}°C` +
-      `  ${record.weather_condition.padEnd(22)}` +
-      `  → influx`
-    );
+  // Read from Redis stream → write to InfluxDB → wait for the write → XACK
+  await startConsumer(redis, {
+    write(record: WeatherRecord) {
+      writer.write(record);
+      console.log(
+        `[processor] ✓ ${record.city_name.padEnd(22)}` +
+        ` ${String(record.temperature).padEnd(6)}°C` +
+        `  ${record.weather_condition.padEnd(22)}` +
+        `  → influx`
+      );
+    },
+    flush: () => writer.flush(),
   });
 }
 
