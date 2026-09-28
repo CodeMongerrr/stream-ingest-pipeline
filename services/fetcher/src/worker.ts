@@ -8,6 +8,9 @@ const STREAM_KEY  = "weather:raw";
 const CYCLE_KEY   = "weather:cycle:id";
 const CYCLE_START = "weather:cycle:start_ms";
 const NUM_WORKERS = 50;
+// Upper bound on stream length. XADD trims the oldest entries past this (approximately),
+// so Redis memory stays flat. 100k entries is a few hours of backlog at 8 req/s.
+const STREAM_MAXLEN = parseInt(process.env.STREAM_MAXLEN ?? "100000");
 
 // In-memory per-second analytics, keyed by "cycleId:secondOffset"
 const analyticsMap = new Map<string, { ok: number; fail: number; timeout: number; latencies: number[] }>();
@@ -22,12 +25,12 @@ function getBucket(cycleId: number, secondOffset: number) {
   return analyticsMap.get(key)!;
 }
 
-async function runWorker(id: number, redis: Redis, limiter: RateLimiter): Promise<void> {
+async function runWorker(id: number, redis: Redis, blocking: Redis, limiter: RateLimiter): Promise<void> {
   console.log(`[worker-${id}] started`);
 
   while (true) {
     try {
-      const item = await redis.brpop(QUEUE_KEY, 5);
+      const item = await blocking.brpop(QUEUE_KEY, 5);
       if (!item) continue;
 
       const [cycleIdStr, startMsStr] = await redis.mget(CYCLE_KEY, CYCLE_START);
@@ -50,7 +53,7 @@ async function runWorker(id: number, redis: Redis, limiter: RateLimiter): Promis
       bucket.latencies.push(latencyMs);
 
       await redis.xadd(
-        STREAM_KEY, "*",
+        STREAM_KEY, "MAXLEN", "~", STREAM_MAXLEN, "*",
         "city_name",         result.city_name,
         "latitude",          String(result.latitude),
         "longitude",         String(result.longitude),
@@ -125,6 +128,9 @@ function sleep(ms: number): Promise<void> {
 export async function startWorkers(redis: Redis, limiter: RateLimiter): Promise<void> {
   console.log(`[workers] starting ${NUM_WORKERS} workers`);
   startAnalyticsReporter();
-  const workers = Array.from({ length: NUM_WORKERS }, (_, i) => runWorker(i + 1, redis, limiter));
+  // BRPOP blocks the connection it runs on. The pops get their own connection so the
+  // scheduler, the rate limiter and XADD never wait behind an empty-queue BRPOP.
+  const blocking = redis.duplicate();
+  const workers = Array.from({ length: NUM_WORKERS }, (_, i) => runWorker(i + 1, redis, blocking, limiter));
   await Promise.all(workers);
 }
