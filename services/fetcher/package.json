@@ -1,7 +1,7 @@
 {
   "name": "weather-fetcher",
   "version": "1.0.0",
-  "description": "Async weather fetcher service — fetches 1000+ locations every 60s",
+  "description": "Fetcher for stream-ingest-pipeline with a cron scheduler, 50 async workers and a Redis rate limiter shared across replicas",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
