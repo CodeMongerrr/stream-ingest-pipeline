@@ -1,5 +1,6 @@
-# Weather Telemetry Pipeline
+# stream-ingest-pipeline
 # Start:     docker compose up --build
+# Mock data: USE_MOCK=true docker compose up --build
 # Stop:      docker compose down
 # Wipe data: docker compose down -v
 
@@ -8,8 +9,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: weather_redis
-    ports:
-      - "6379:6379"
+    # No host port. Services reach Redis on the compose network, and
+    # `docker compose exec redis redis-cli` works without exposing it.
     volumes:
       - redis_data:/data
     healthcheck:
@@ -22,7 +23,7 @@ services:
     image: influxdb:2.7-alpine
     container_name: weather_influxdb
     ports:
-      - "8086:8086"
+      - "127.0.0.1:8086:8086"   # UI and API on this machine only
     environment:
       DOCKER_INFLUXDB_INIT_MODE:        setup
       DOCKER_INFLUXDB_INIT_USERNAME:    admin
@@ -43,10 +44,11 @@ services:
     build: ./services/fetcher
     container_name: weather_fetcher
     ports:
-      - "3001:3000"     # /metrics and /healthz
+      - "127.0.0.1:3001:3000"   # /metrics and /healthz on this machine only
     environment:
       REDIS_URL: redis://redis:6379
-      # USE_MOCK: "true"   ← uncomment to use mock data instead of real API
+      # USE_MOCK=true docker compose up  → synthetic data, no Open-Meteo quota used
+      USE_MOCK: ${USE_MOCK:-false}
     depends_on:
       redis:
         condition: service_healthy
